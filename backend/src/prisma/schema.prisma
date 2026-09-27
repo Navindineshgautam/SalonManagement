@@ -1,0 +1,240 @@
+// Prisma schema — Salon Management SaaS (Phase 1)
+// Instants (Booking/BookingItem times, token expiry) are timestamptz (UTC).
+// Schedule times are integer minutes-from-midnight in the salon-local day.
+// Calendar dates (leave/holiday/override) are `date`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Pooled connection used by the running app.
+  url       = env("DATABASE_URL")
+  // Direct (unpooled) connection used for migrations.
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  MANAGER
+  RECEPTIONIST
+}
+
+enum EntityStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ScheduleOverrideType {
+  EXTRA_HOURS
+  TIME_OFF
+}
+
+enum BookingStatus {
+  BOOKED
+}
+
+model Salon {
+  id           String       @id @default(cuid())
+  name         String
+  timezone     String
+  contactPhone String?
+  contactEmail String?
+  status       EntityStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+
+  users     User[]
+  services  Service[]
+  employees Employee[]
+  holidays  Holiday[]
+  customers Customer[]
+  bookings  Booking[]
+}
+
+model User {
+  id           String       @id @default(cuid())
+  salonId      String?
+  email        String       @unique
+  passwordHash String
+  role         Role
+  name         String
+  status       EntityStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+
+  salon         Salon?         @relation(fields: [salonId], references: [id])
+  refreshTokens RefreshToken[]
+
+  @@index([salonId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Service {
+  id              String       @id @default(cuid())
+  salonId         String
+  name            String
+  durationMinutes Int
+  price           Decimal      @db.Decimal(10, 2)
+  status          EntityStatus @default(ACTIVE)
+
+  salon            Salon             @relation(fields: [salonId], references: [id])
+  employeeServices EmployeeService[]
+  bookingItems     BookingItem[]
+
+  @@index([salonId])
+}
+
+model Employee {
+  id             String       @id @default(cuid())
+  salonId        String
+  name           String
+  phone          String
+  email          String
+  role           String
+  specialization String
+  weeklyOff      Int?
+  status         EntityStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+
+  salon            Salon             @relation(fields: [salonId], references: [id])
+  employeeServices EmployeeService[]
+  workingHours     WorkingHour[]
+  breaks           Break[]
+  leaves           Leave[]
+  overrides        ScheduleOverride[]
+  bookingItems     BookingItem[]
+
+  @@index([salonId])
+}
+
+model EmployeeService {
+  employeeId String
+  serviceId  String
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, serviceId])
+  @@index([serviceId])
+}
+
+model WorkingHour {
+  id          String @id @default(cuid())
+  employeeId  String
+  weekday     Int
+  startMinute Int
+  endMinute   Int
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model Break {
+  id          String @id @default(cuid())
+  employeeId  String
+  weekday     Int
+  startMinute Int
+  endMinute   Int
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model Leave {
+  id         String   @id @default(cuid())
+  employeeId String
+  startDate  DateTime @db.Date
+  endDate    DateTime @db.Date
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model ScheduleOverride {
+  id          String               @id @default(cuid())
+  employeeId  String
+  date        DateTime             @db.Date
+  type        ScheduleOverrideType
+  startMinute Int?
+  endMinute   Int?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model Holiday {
+  id      String   @id @default(cuid())
+  salonId String
+  date    DateTime @db.Date
+  name    String
+
+  salon Salon @relation(fields: [salonId], references: [id])
+
+  @@unique([salonId, date])
+  @@index([salonId])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  salonId   String
+  name      String
+  phone     String
+  email     String?
+  createdAt DateTime @default(now())
+
+  salon    Salon     @relation(fields: [salonId], references: [id])
+  bookings Booking[]
+
+  @@unique([salonId, phone])
+  @@index([salonId])
+}
+
+model Booking {
+  id         String        @id @default(cuid())
+  salonId    String
+  customerId String
+  startAt    DateTime      @db.Timestamptz(6)
+  endAt      DateTime      @db.Timestamptz(6)
+  status     BookingStatus @default(BOOKED)
+  createdBy  String
+  createdAt  DateTime      @default(now())
+
+  salon    Salon         @relation(fields: [salonId], references: [id])
+  customer Customer      @relation(fields: [customerId], references: [id])
+  items    BookingItem[]
+
+  @@index([salonId])
+}
+
+model BookingItem {
+  id         String   @id @default(cuid())
+  bookingId  String
+  serviceId  String
+  employeeId String
+  startAt    DateTime @db.Timestamptz(6)
+  endAt      DateTime @db.Timestamptz(6)
+
+  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId, startAt, endAt])
+  @@index([bookingId])
+}
