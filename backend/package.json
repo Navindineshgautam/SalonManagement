@@ -7,7 +7,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "prisma generate --schema src/prisma/schema.prisma && tsc -p tsconfig.json",
+    "build": "prisma generate --schema src/prisma/schema.prisma && npx --no-install tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "seed": "ts-node --transpile-only src/prisma/seed.ts",
     "prisma:generate": "prisma generate",
@@ -47,7 +47,7 @@
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=20 <21"
